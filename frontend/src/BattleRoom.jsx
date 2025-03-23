@@ -83,11 +83,17 @@ function BattleRoom() {
   };
 
   const joinRoom = async () => {
-    const res = await axios.post(`${API}/join`, { roomId, username });
-    if (res.data.success) {
-      setInRoom(true);
-    } else {
-      alert(res.data.message || 'Failed to join');
+    try {
+      const res = await axios.post(`${API}/join`, { roomId, username });
+      console.log('Join response:', res.data);
+      if (res.data.success) {
+        setInRoom(true);
+      } else {
+        alert(res.data.message || 'Failed to join');
+      }
+    } catch (err) {
+      console.error('Join error:', err.response?.data || err.message);
+      alert(err.response?.data?.error || 'Failed to join room. Check console for details.');
     }
   };
 
@@ -125,6 +131,17 @@ function BattleRoom() {
         <div>
           <h3>Room ID: {roomId}</h3>
           <h4>Status: {status}</h4>
+
+          {players.length > 0 && (
+            <div>
+              <h4>Players in Room:</h4>
+              <ul style={{ listStyle: 'none', padding: 0 }}>
+                {players.map(p => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {status === 'waiting' || status === 'ready' ? (
             <div>
