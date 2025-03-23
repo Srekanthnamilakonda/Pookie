@@ -46,12 +46,13 @@ function BattleRoom() {
 
   // Poll during "waiting" or "ready"
   useEffect(() => {
-    if (inRoom && (status === 'waiting' || status === 'ready')) {
+    if (inRoom && !pollInterval) {
       const interval = setInterval(pollStatus, 1000);
       setPollInterval(interval);
       return () => clearInterval(interval);
     }
-  }, [status, inRoom]);
+  }, [inRoom]);
+  
 
   // Handle game start countdown (GO!)
   useEffect(() => {
@@ -78,14 +79,12 @@ function BattleRoom() {
     const res = await axios.post(`${API}/create`, { username });
     setRoomId(res.data.roomId);
     setInRoom(true);
-    setStatus('waiting');
   };
 
   const joinRoom = async () => {
     const res = await axios.post(`${API}/join`, { roomId, username });
     if (res.data.success) {
       setInRoom(true);
-      setStatus('waiting');
     } else {
       alert(res.data.message || 'Failed to join');
     }
@@ -172,6 +171,10 @@ function BattleRoom() {
       <button onClick={() => (window.location.href = '/')} style={{ marginTop: '20px' }}>
         🔙 Back to Game
       </button>
+
+      <p>Debug: status = {status}</p>
+<p>Username: {username}</p>
+
     </div>
   );
 }
