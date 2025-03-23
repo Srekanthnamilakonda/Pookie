@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 
-const API = 'https://pookie-clicker.onrender.com/api/battle';
+const API = import.meta.env.VITE_API_URL + '/battle';
 
 function BattleRoom() {
   const [roomId, setRoomId] = useState('');

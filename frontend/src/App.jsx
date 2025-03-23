@@ -6,7 +6,7 @@ import penguinSilver from './assets/penguin_silver.png';
 import penguinGold from './assets/penguin_gold.png';
 import penguinPlatinum from './assets/penguin_platinum.png';
 
-const API = 'https://pookie-clicker.onrender.com';
+const API = import.meta.env.VITE_API_URL + '/user';
 
 
 function App() {

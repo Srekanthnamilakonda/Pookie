@@ -13,7 +13,7 @@ function Leaderboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get('https://pookie-clicker.onrender.com/api/user/leaderboard')
+    axios.get(`${import.meta.env.VITE_API_URL}/user/leaderboard`)
       .then(res => {
         if (Array.isArray(res.data)) {
           setLeaders(res.data);
