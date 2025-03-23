@@ -25,15 +25,9 @@ router.post('/join', async (req, res) => {
   const { roomId, username } = req.body;
   const room = await BattleRoom.findOne({ roomId });
 
-  if (!room) {
-    return res.status(400).json({ error: 'Room not found' });
-  }
-  if (room.players.includes(username)) {
-    return res.status(400).json({ error: 'User already in room' });
-  }
-  if (room.players.length >= 2) {
-    return res.status(400).json({ error: 'Room is full' });
-  }
+  if (!room) return res.status(400).json({ error: 'Room not found' });
+  if (room.players.includes(username)) return res.status(400).json({ error: 'User already in room' });
+  if (room.players.length >= 2) return res.status(400).json({ error: 'Room is full' });
 
   room.players.push(username);
   room.ready.set(username, false);
@@ -120,8 +114,16 @@ router.post('/complete', async (req, res) => {
   const b2 = room.bets.get(p2) || 0;
   const cookiePool = (b1 + b2) * 10;
 
-  const winner = s1 > s2 ? p1 : s2 > s1 ? p2 : null;
-  const loser = winner === p1 ? p2 : winner === p2 ? p1 : null;
+  let winner = null;
+  let loser = null;
+
+  if (s1 > s2) {
+    winner = p1;
+    loser = p2;
+  } else if (s2 > s1) {
+    winner = p2;
+    loser = p1;
+  }
 
   if (winner && loser) {
     await User.updateOne({ username: winner }, {
@@ -133,9 +135,21 @@ router.post('/complete', async (req, res) => {
       $inc: { cookies: -((room.bets.get(loser) || 0) * 10), losses: 1 },
       $push: { matchHistory: { opponent: winner, result: 'loss' } }
     });
+  } else {
+    // Handle tie: no cookie reward/penalty, just record
+    await User.updateOne({ username: p1 }, {
+      $push: { matchHistory: { opponent: p2, result: 'tie' } }
+    });
+    await User.updateOne({ username: p2 }, {
+      $push: { matchHistory: { opponent: p1, result: 'tie' } }
+    });
   }
 
-  res.json({ winner, scores: Object.fromEntries(room.scores), bets: Object.fromEntries(room.bets) });
+  res.json({
+    winner,
+    scores: Object.fromEntries(room.scores),
+    bets: Object.fromEntries(room.bets)
+  });
 });
 
 module.exports = router;
