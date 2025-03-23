@@ -8,6 +8,7 @@ import penguinPlatinum from './assets/penguin_platinum.png';
 
 const API = 'https://pookie-clicker.onrender.com';
 
+
 function App() {
   const [username, setUsername] = useState(() => {
     return localStorage.getItem('username') || 'pookie';
