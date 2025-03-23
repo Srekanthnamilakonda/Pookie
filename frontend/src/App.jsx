@@ -183,9 +183,7 @@ function App() {
       >
         🔼 Buy Upgrade (Cost: {upgradeCost})
       </button>
-
-      <br />
-      <h4>Battles Won: {user.wins || 0}</h4>
+      
       <br />
 
       <button
