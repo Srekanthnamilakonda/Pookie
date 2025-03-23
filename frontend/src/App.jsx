@@ -6,7 +6,7 @@ import penguinSilver from './assets/penguin_silver.png';
 import penguinGold from './assets/penguin_gold.png';
 import penguinPlatinum from './assets/penguin_platinum.png';
 
-const API = 'http://localhost:3001/api/user';
+const API = 'https://pookie-clicker.onrender.com';
 
 function App() {
   const [username, setUsername] = useState(() => {
