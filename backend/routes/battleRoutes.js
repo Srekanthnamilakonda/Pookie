@@ -25,8 +25,14 @@ router.post('/join', async (req, res) => {
   const { roomId, username } = req.body;
   const room = await BattleRoom.findOne({ roomId });
 
-  if (!room || room.players.length >= 2 || room.players.includes(username)) {
-    return res.status(400).json({ error: 'Cannot join room' });
+  if (!room) {
+    return res.status(400).json({ error: 'Room not found' });
+  }
+  if (room.players.includes(username)) {
+    return res.status(400).json({ error: 'User already in room' });
+  }
+  if (room.players.length >= 2) {
+    return res.status(400).json({ error: 'Room is full' });
   }
 
   room.players.push(username);
