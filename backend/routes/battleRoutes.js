@@ -1,19 +1,11 @@
-
 const express = require('express');
 const router = express.Router();
 const BattleRoom = require('../models/BattleRoom');
 const User = require('../models/User');
 
-// Create battle room with a bet
+// Create battle room
 router.post('/create', async (req, res) => {
-  const { username, bet } = req.body;
-  const betAmount = bet * 10;
-
-  const user = await User.findOne({ username });
-  if (!user || user.cookies < betAmount) {
-    return res.status(400).json({ error: 'Not enough cookies to bet that amount.' });
-  }
-
+  const { username } = req.body;
   const roomId = Math.random().toString(36).substring(2, 8);
 
   const room = new BattleRoom({
@@ -21,67 +13,63 @@ router.post('/create', async (req, res) => {
     players: [username],
     ready: { [username]: false },
     scores: { [username]: 0 },
-    bets: { [username]: bet }
+    bets: { [username]: 0 }
   });
 
-  user.cookies -= betAmount;
-  await user.save();
   await room.save();
-
   res.json({ roomId });
 });
 
-// Join existing room with a bet
+// Join existing room
 router.post('/join', async (req, res) => {
-  const { roomId, username, bet } = req.body;
+  const { roomId, username } = req.body;
   const room = await BattleRoom.findOne({ roomId });
-  const betAmount = bet * 10;
 
-  const user = await User.findOne({ username });
   if (!room || room.players.length >= 2 || room.players.includes(username)) {
     return res.status(400).json({ error: 'Cannot join room' });
-  }
-
-  if (!user || user.cookies < betAmount) {
-    return res.status(400).json({ error: 'Not enough cookies to bet that amount.' });
   }
 
   room.players.push(username);
   room.ready.set(username, false);
   room.scores.set(username, 0);
-  room.bets.set(username, bet);
-
-  user.cookies -= betAmount;
-  await user.save();
+  room.bets.set(username, 0);
   await room.save();
 
   res.json({ success: true });
 });
 
-// Set ready status
+// Mark player ready & submit bet
 router.post('/ready', async (req, res) => {
-  const { roomId, username } = req.body;
+  const { roomId, username, bet } = req.body;
   const room = await BattleRoom.findOne({ roomId });
-  if (!room) return res.status(404).json({ error: 'Room not found' });
+  const user = await User.findOne({ username });
+
+  if (!room || !user) return res.status(404).json({ error: 'Room or user not found' });
+
+  const cookieCost = (bet || 0) * 10;
+  if (user.cookies < cookieCost) {
+    return res.status(400).json({ error: 'Not enough cookies to bet!' });
+  }
 
   room.ready.set(username, true);
+  room.bets.set(username, bet || 0);
 
   const allReady = room.players.length === 2 && room.players.every(p => room.ready.get(p));
   if (allReady) {
     room.status = 'active';
     room.startTime = new Date();
-    room.endTime = new Date(Date.now() + 15000);
+    room.endTime = new Date(Date.now() + 15000); // 15 seconds
   }
 
   await room.save();
-  res.json({ status: room.status, startTime: room.startTime });
+  res.json({ status: room.status });
 });
 
-// Click handler
+// Clicking logic
 router.post('/click', async (req, res) => {
   const { roomId, username } = req.body;
   const room = await BattleRoom.findOne({ roomId });
-  if (!room || room.status !== 'active') return res.status(400).json({ error: 'Not in active battle' });
+  if (!room || room.status !== 'active') return res.status(400).json({ error: 'Battle inactive' });
 
   const now = new Date();
   if (now > room.endTime) return res.status(400).json({ error: 'Battle ended' });
@@ -91,7 +79,7 @@ router.post('/click', async (req, res) => {
   res.json({ score: room.scores.get(username) });
 });
 
-// Poll status
+// Status polling
 router.get('/status/:roomId', async (req, res) => {
   const room = await BattleRoom.findOne({ roomId: req.params.roomId });
   if (!room) return res.status(404).json({ error: 'Room not found' });
@@ -107,14 +95,14 @@ router.get('/status/:roomId', async (req, res) => {
   });
 });
 
-// Complete battle
+// Complete and score battle
 router.post('/complete', async (req, res) => {
   const { roomId } = req.body;
   const room = await BattleRoom.findOne({ roomId });
-  if (!room || room.status !== 'active') return res.status(400).json({ error: 'Room not active' });
+  if (!room || room.status !== 'active') return res.status(400).json({ error: 'Not active' });
 
   const now = new Date();
-  if (now < room.endTime) return res.status(400).json({ error: 'Battle not finished yet' });
+  if (now < room.endTime) return res.status(400).json({ error: 'Too early' });
 
   room.status = 'ended';
   await room.save();
@@ -124,29 +112,24 @@ router.post('/complete', async (req, res) => {
   const s2 = room.scores.get(p2);
   const b1 = room.bets.get(p1) || 0;
   const b2 = room.bets.get(p2) || 0;
+  const cookiePool = (b1 + b2) * 10;
 
   const winner = s1 > s2 ? p1 : s2 > s1 ? p2 : null;
   const loser = winner === p1 ? p2 : winner === p2 ? p1 : null;
 
   if (winner && loser) {
-    const totalReward = (b1 + b2) * 10;
-
     await User.updateOne({ username: winner }, {
-      $inc: { cookies: totalReward, wins: 1 },
+      $inc: { cookies: cookiePool, wins: 1 },
       $push: { matchHistory: { opponent: loser, result: 'win' } }
     });
 
     await User.updateOne({ username: loser }, {
-      $inc: { losses: 1 },
+      $inc: { cookies: -((room.bets.get(loser) || 0) * 10), losses: 1 },
       $push: { matchHistory: { opponent: winner, result: 'loss' } }
     });
   }
 
-  res.json({
-    winner,
-    scores: Object.fromEntries(room.scores),
-    bets: Object.fromEntries(room.bets)
-  });
+  res.json({ winner, scores: Object.fromEntries(room.scores), bets: Object.fromEntries(room.bets) });
 });
 
 module.exports = router;
