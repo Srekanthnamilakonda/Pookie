@@ -5,7 +5,7 @@ const API = import.meta.env.VITE_API_URL + '/battle';
 
 function BattleRoom() {
   const [roomId, setRoomId] = useState('');
-  const [username, setUsername] = useState(() => localStorage.getItem('username') || 'pookie');
+  const [username] = useState(() => localStorage.getItem('username') || 'pookie');
   const [inRoom, setInRoom] = useState(false);
   const [status, setStatus] = useState('');
   const [isReady, setIsReady] = useState(false);
@@ -13,63 +13,73 @@ function BattleRoom() {
   const [preCountdown, setPreCountdown] = useState(null);
   const [clicks, setClicks] = useState(0);
   const [winner, setWinner] = useState('');
-  const [intervalId, setIntervalId] = useState(null);
+  const [pollInterval, setPollInterval] = useState(null);
 
   const pollStatus = async () => {
-    const res = await axios.get(`${API}/status/${roomId}`);
-    const data = res.data;
+    try {
+      const res = await axios.get(`${API}/status/${roomId}`);
+      const data = res.data;
+      setStatus(data.status);
 
-    setStatus(data.status);
+      if (data.status === 'active') {
+        const now = Date.now();
+        const timeLeft = Math.ceil(new Date(data.endTime).getTime() - now) / 1000;
+        setCountdown(Math.max(0, Math.floor(timeLeft)));
 
-    if (data.status === 'active') {
-      const now = Date.now();
-      const timeLeft = Math.ceil(new Date(data.endTime).getTime() - now) / 1000;
-      setCountdown(Math.max(0, Math.floor(timeLeft)));
-
-      if (timeLeft <= 0) {
-        clearInterval(intervalId);
-        axios.post(`${API}/complete`, { roomId }).then(res => {
+        if (timeLeft <= 0) {
+          clearInterval(pollInterval);
+          const res = await axios.post(`${API}/complete`, { roomId });
           setWinner(res.data.winner);
           setStatus('ended');
-        });
+        }
       }
+    } catch (err) {
+      console.error('Polling error:', err);
     }
   };
+
+  // Poll during "waiting" or "ready"
+  useEffect(() => {
+    if (inRoom && (status === 'waiting' || status === 'ready')) {
+      const interval = setInterval(pollStatus, 1000);
+      setPollInterval(interval);
+      return () => clearInterval(interval);
+    }
+  }, [status, inRoom]);
+
+  // Handle game start countdown (GO!)
+  useEffect(() => {
+    if (status === 'active' && preCountdown === null) {
+      let pre = 3;
+      setPreCountdown(pre);
+      const countdownInterval = setInterval(() => {
+        pre -= 1;
+        setPreCountdown(pre);
+        if (pre <= 0) {
+          clearInterval(countdownInterval);
+          setPreCountdown(0);
+        }
+      }, 1000);
+    }
+  }, [status]);
 
   const handleClick = () => {
     setClicks(prev => prev + 1);
     axios.post(`${API}/click`, { roomId, username });
   };
 
-  useEffect(() => {
-    if (status === 'active' && preCountdown === null) {
-      let pre = 3;
-      setPreCountdown(pre);
-
-      const countdownInterval = setInterval(() => {
-        pre -= 1;
-        setPreCountdown(pre);
-
-        if (pre <= 0) {
-          clearInterval(countdownInterval);
-          setPreCountdown(0);
-          const id = setInterval(pollStatus, 1000);
-          setIntervalId(id);
-        }
-      }, 1000);
-    }
-  }, [status]);
-
   const createRoom = async () => {
     const res = await axios.post(`${API}/create`, { username });
     setRoomId(res.data.roomId);
     setInRoom(true);
+    setStatus('waiting');
   };
 
   const joinRoom = async () => {
     const res = await axios.post(`${API}/join`, { roomId, username });
     if (res.data.success) {
       setInRoom(true);
+      setStatus('waiting');
     } else {
       alert(res.data.message || 'Failed to join');
     }
@@ -78,6 +88,7 @@ function BattleRoom() {
   const sendReady = async () => {
     await axios.post(`${API}/ready`, { roomId, username });
     setIsReady(true);
+    setStatus('ready');
   };
 
   return (
@@ -113,7 +124,7 @@ function BattleRoom() {
               disabled={isReady}
               style={{ padding: '10px 20px', marginTop: '10px' }}
             >
-              {isReady ? 'Waiting for opponent...' : 'Ready'}
+              {isReady ? '✅ Ready - Waiting for opponent...' : '✅ Click to Ready Up'}
             </button>
           ) : status === 'active' ? (
             <>
