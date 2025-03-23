@@ -218,7 +218,7 @@ const sendReady = async () => {
                   marginTop: '20px'
                 }}
               >
-                {winner === username ? '🏆 You Win!' : '😢 You Lost!'}
+                {winner === username }
               </h2>
               <p>Winner: <strong>{winner}</strong></p>
               <p>Final Scores:</p>
