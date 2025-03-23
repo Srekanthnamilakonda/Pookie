@@ -185,6 +185,8 @@ function App() {
       </button>
 
       <br />
+      <h4>Battles Won: {user.wins || 0}</h4>
+      <br />
 
       <button
         onClick={() => window.location.href = "/leaderboard"}

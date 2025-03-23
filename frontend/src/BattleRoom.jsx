@@ -1,182 +1,135 @@
-import { useEffect, useState } from 'react';
-import axios from 'axios';
+const express = require('express');
+const router = express.Router();
+const BattleRoom = require('../models/BattleRoom');
+const User = require('../models/User');
 
-const API = import.meta.env.VITE_API_URL + '/battle';
+// Create battle room
+router.post('/create', async (req, res) => {
+  const { username } = req.body;
+  const roomId = Math.random().toString(36).substring(2, 8);
 
-function BattleRoom() {
-  const [roomId, setRoomId] = useState('');
-  const [username] = useState(() => localStorage.getItem('username') || 'pookie');
-  const [inRoom, setInRoom] = useState(false);
-  const [status, setStatus] = useState('');
-  const [isReady, setIsReady] = useState(false);
-  const [countdown, setCountdown] = useState(null);
-  const [preCountdown, setPreCountdown] = useState(null);
-  const [clicks, setClicks] = useState(0);
-  const [winner, setWinner] = useState('');
-  const [pollInterval, setPollInterval] = useState(null);
+  const room = new BattleRoom({
+    roomId,
+    players: [username],
+    ready: { [username]: false },
+    scores: { [username]: 0 },
+    bets: { [username]: 0 }
+  });
 
-  const pollStatus = async () => {
-    try {
-      const res = await axios.get(`${API}/status/${roomId}`);
-      const data = res.data;
-  
-      setStatus(data.status);
-  
-      // show players/ready states in console
-      console.log('Players:', data.players);
-      console.log('Ready States:', data.ready);
-  
-      // If status is 'ready', wait for it to turn 'active'
-      if (data.status === 'active') {
-        const now = Date.now();
-        const timeLeft = Math.ceil(new Date(data.endTime).getTime() - now) / 1000;
-        setCountdown(Math.max(0, Math.floor(timeLeft)));
-  
-        if (timeLeft <= 0) {
-          clearInterval(pollInterval);
-          const res = await axios.post(`${API}/complete`, { roomId });
-          setWinner(res.data.winner);
-          setStatus('ended');
-        }
-      }
-    } catch (err) {
-      console.error('Polling error:', err);
-    }
-  };
+  await room.save();
+  res.json({ roomId });
+});
 
-  // Poll during "waiting" or "ready"
-  useEffect(() => {
-    if (inRoom && !pollInterval) {
-      const interval = setInterval(pollStatus, 1000);
-      setPollInterval(interval);
-      return () => clearInterval(interval);
-    }
-  }, [inRoom]);
-  
+// Join existing room
+router.post('/join', async (req, res) => {
+  const { roomId, username } = req.body;
+  const room = await BattleRoom.findOne({ roomId });
 
-  // Handle game start countdown (GO!)
-  useEffect(() => {
-    if (status === 'active' && preCountdown === null) {
-      let pre = 3;
-      setPreCountdown(pre);
-      const countdownInterval = setInterval(() => {
-        pre -= 1;
-        setPreCountdown(pre);
-        if (pre <= 0) {
-          clearInterval(countdownInterval);
-          setPreCountdown(0);
-        }
-      }, 1000);
-    }
-  }, [status]);
+  if (!room || room.players.length >= 2 || room.players.includes(username)) {
+    return res.status(400).json({ error: 'Cannot join room' });
+  }
 
-  const handleClick = () => {
-    setClicks(prev => prev + 1);
-    axios.post(`${API}/click`, { roomId, username });
-  };
+  room.players.push(username);
+  room.ready.set(username, false);
+  room.scores.set(username, 0);
+  room.bets.set(username, 0);
+  await room.save();
 
-  const createRoom = async () => {
-    const res = await axios.post(`${API}/create`, { username });
-    setRoomId(res.data.roomId);
-    setInRoom(true);
-  };
+  res.json({ success: true });
+});
 
-  const joinRoom = async () => {
-    const res = await axios.post(`${API}/join`, { roomId, username });
-    if (res.data.success) {
-      setInRoom(true);
-    } else {
-      alert(res.data.message || 'Failed to join');
-    }
-  };
+// Mark player ready & submit bet
+router.post('/ready', async (req, res) => {
+  const { roomId, username, bet } = req.body;
+  const room = await BattleRoom.findOne({ roomId });
+  const user = await User.findOne({ username });
 
-  const sendReady = async () => {
-    await axios.post(`${API}/ready`, { roomId, username });
-    setIsReady(true);
-    setStatus('ready');
-  };
+  if (!room || !user) return res.status(404).json({ error: 'Room or user not found' });
 
-  return (
-    <div style={{ textAlign: 'center', marginTop: '30px' }}>
-      <h1>⚔️ Battle Room</h1>
+  const cookieCost = (bet || 0) * 10;
+  if (user.cookies < cookieCost) {
+    return res.status(400).json({ error: 'Not enough cookies to bet!' });
+  }
 
-      {!inRoom && (
-        <div>
-          <button onClick={createRoom} style={{ padding: '10px 20px', margin: '10px' }}>
-            Create Room
-          </button>
-          <br />
-          <input
-            placeholder="Room ID"
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value)}
-            style={{ padding: '8px', marginTop: '10px' }}
-          />
-          <button onClick={joinRoom} style={{ padding: '10px 20px', marginLeft: '10px' }}>
-            Join Room
-          </button>
-        </div>
-      )}
+  room.ready.set(username, true);
+  room.bets.set(username, bet || 0);
 
-      {inRoom && (
-        <div>
-          <h3>Room ID: {roomId}</h3>
-          <h4>Status: {status}</h4>
+  const allReady = room.players.length === 2 && room.players.every(p => room.ready.get(p));
+  if (allReady) {
+    room.status = 'active';
+    room.startTime = new Date();
+    room.endTime = new Date(Date.now() + 15000); // 15 seconds
+  }
 
-          {status === 'waiting' || status === 'ready' ? (
-            <button
-              onClick={sendReady}
-              disabled={isReady}
-              style={{ padding: '10px 20px', marginTop: '10px' }}
-            >
-              {isReady ? '✅ Ready - Waiting for opponent...' : '✅ Click to Ready Up'}
-            </button>
-          ) : status === 'active' ? (
-            <>
-              {preCountdown > 0 ? (
-                <h1 style={{ fontSize: '48px', color: '#f39c12' }}>
-                  {preCountdown === 0 ? 'GO!' : preCountdown}
-                </h1>
-              ) : (
-                <>
-                  <h2>Time Left: {countdown}s</h2>
-                  <h3>Your Clicks: {clicks}</h3>
-                  <button
-                    onClick={handleClick}
-                    style={{ padding: '20px 40px', fontSize: '20px', marginTop: '10px' }}
-                  >
-                    CLICK!
-                  </button>
-                </>
-              )}
-            </>
-          ) : status === 'ended' ? (
-            <>
-              <h2
-                style={{
-                  color: winner === username ? '#27ae60' : '#e74c3c',
-                  fontSize: '32px',
-                  marginTop: '20px'
-                }}
-              >
-                {winner === username ? '🏆 You Win!' : '😢 You Lost!'}
-              </h2>
-              <p>Winner: <strong>{winner}</strong></p>
-            </>
-          ) : null}
-        </div>
-      )}
+  await room.save();
+  res.json({ status: room.status });
+});
 
-      <br />
-      <button onClick={() => (window.location.href = '/')} style={{ marginTop: '20px' }}>
-        🔙 Back to Game
-      </button>
+// Clicking logic
+router.post('/click', async (req, res) => {
+  const { roomId, username } = req.body;
+  const room = await BattleRoom.findOne({ roomId });
+  if (!room || room.status !== 'active') return res.status(400).json({ error: 'Battle inactive' });
 
-      <p>Debug: status = {status}</p>
-<p>Username: {username}</p>
+  const now = new Date();
+  if (now > room.endTime) return res.status(400).json({ error: 'Battle ended' });
 
-    </div>
-  );
-}
+  room.scores.set(username, (room.scores.get(username) || 0) + 1);
+  await room.save();
+  res.json({ score: room.scores.get(username) });
+});
 
-export default BattleRoom;
+// Status polling
+router.get('/status/:roomId', async (req, res) => {
+  const room = await BattleRoom.findOne({ roomId: req.params.roomId });
+  if (!room) return res.status(404).json({ error: 'Room not found' });
+
+  res.json({
+    players: room.players,
+    ready: Object.fromEntries(room.ready),
+    scores: Object.fromEntries(room.scores),
+    bets: Object.fromEntries(room.bets || {}),
+    status: room.status,
+    startTime: room.startTime,
+    endTime: room.endTime
+  });
+});
+
+// Complete and score battle
+router.post('/complete', async (req, res) => {
+  const { roomId } = req.body;
+  const room = await BattleRoom.findOne({ roomId });
+  if (!room || room.status !== 'active') return res.status(400).json({ error: 'Not active' });
+
+  const now = new Date();
+  if (now < room.endTime) return res.status(400).json({ error: 'Too early' });
+
+  room.status = 'ended';
+  await room.save();
+
+  const [p1, p2] = room.players;
+  const s1 = room.scores.get(p1);
+  const s2 = room.scores.get(p2);
+  const b1 = room.bets.get(p1) || 0;
+  const b2 = room.bets.get(p2) || 0;
+  const cookiePool = (b1 + b2) * 10;
+
+  const winner = s1 > s2 ? p1 : s2 > s1 ? p2 : null;
+  const loser = winner === p1 ? p2 : winner === p2 ? p1 : null;
+
+  if (winner && loser) {
+    await User.updateOne({ username: winner }, {
+      $inc: { cookies: cookiePool, wins: 1 },
+      $push: { matchHistory: { opponent: loser, result: 'win' } }
+    });
+
+    await User.updateOne({ username: loser }, {
+      $inc: { cookies: -((room.bets.get(loser) || 0) * 10), losses: 1 },
+      $push: { matchHistory: { opponent: winner, result: 'loss' } }
+    });
+  }
+
+  res.json({ winner, scores: Object.fromEntries(room.scores), bets: Object.fromEntries(room.bets) });
+});
+
+module.exports = router;

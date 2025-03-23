@@ -44,6 +44,8 @@ function Leaderboard() {
             <th style={{ padding: '8px' }}>Username</th>
             <th style={{ padding: '8px' }}>Cookies</th>
             <th style={{ padding: '8px' }}>Title</th>
+            <th style={{ padding: '8px' }}>Upgrades</th>
+            <th style={{ padding: '8px' }}>Battles Won</th>
           </tr>
         </thead>
         <tbody>
@@ -53,6 +55,8 @@ function Leaderboard() {
               <td style={{ padding: '8px' }}>{user.username}</td>
               <td style={{ padding: '8px' }}>{user.cookies}</td>
               <td style={{ padding: '8px' }}>{getRank(user.cookies)}</td>
+              <td style={{ padding: '8px' }}>{user.upgrades || 0}</td>
+              <td style={{ padding: '8px' }}>{user.wins || 0}</td>
             </tr>
           ))}
         </tbody>
