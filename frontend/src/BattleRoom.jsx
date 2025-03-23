@@ -80,22 +80,24 @@ function BattleRoom() {
     const res = await axios.post(`${API}/create`, { username });
     setRoomId(res.data.roomId);
     setInRoom(true);
+    setStatus('waiting'); // ← Set initial status manually
   };
 
   const joinRoom = async () => {
     try {
       const res = await axios.post(`${API}/join`, { roomId, username });
-      console.log('Join response:', res.data);
       if (res.data.success) {
         setInRoom(true);
+        setStatus('waiting'); // ← Start polling
       } else {
         alert(res.data.message || 'Failed to join');
       }
     } catch (err) {
       console.error('Join error:', err.response?.data || err.message);
-      alert(err.response?.data?.error || 'Failed to join room. Check console for details.');
+      alert(err.response?.data?.error || 'Failed to join room');
     }
   };
+  
 
   const sendReady = async () => {
     await axios.post(`${API}/ready`, { roomId, username, bet });
