@@ -19,13 +19,19 @@ function BattleRoom() {
     try {
       const res = await axios.get(`${API}/status/${roomId}`);
       const data = res.data;
+  
       setStatus(data.status);
-
+  
+      // show players/ready states in console
+      console.log('Players:', data.players);
+      console.log('Ready States:', data.ready);
+  
+      // If status is 'ready', wait for it to turn 'active'
       if (data.status === 'active') {
         const now = Date.now();
         const timeLeft = Math.ceil(new Date(data.endTime).getTime() - now) / 1000;
         setCountdown(Math.max(0, Math.floor(timeLeft)));
-
+  
         if (timeLeft <= 0) {
           clearInterval(pollInterval);
           const res = await axios.post(`${API}/complete`, { roomId });
