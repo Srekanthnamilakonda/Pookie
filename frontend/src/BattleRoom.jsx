@@ -23,46 +23,36 @@ function BattleRoom() {
     try {
       const res = await axios.get(`${API}/status/${roomId}`);
       const data = res.data;
-  
-      // DEBUG log to see what backend sends
-      console.log("Polled status:", data.status);
-  
-      // Defensive fallback: if status is missing, set to 'waiting'
-      const safeStatus = ['waiting', 'ready', 'active', 'ended'].includes(data.status)
-        ? data.status
-        : 'waiting';
-  
-      setStatus(safeStatus);
+      setStatus(data.status);
       setPlayers(data.players);
       setScores(data.scores || {});
       setBets(data.bets || {});
-  
+      
       const opponent = data.players.find(p => p !== username);
       setOpponentClicks(data.scores?.[opponent] || 0);
   
-      // Handle countdown during 'active' status
-      if (safeStatus === 'active') {
-        const now = Date.now();
-        const end = new Date(data.endTime).getTime();
-        const timeLeft = Math.ceil((end - now) / 1000);
-        const clampedTime = Math.max(0, Math.floor(timeLeft));
-        setCountdown(clampedTime);
+      // ✅ Fix: sync isReady from backend
+      const userIsReady = data.ready?.[username] || false;
+      setIsReady(userIsReady);
   
-        if (clampedTime <= 0) {
-          // Prevent duplicate completion calls
-          if (status !== 'ended') {
-            const res = await axios.post(`${API}/complete`, { roomId });
-            setWinner(res.data.winner);
-            setScores(res.data.scores);
-            setBets(res.data.bets);
-            setStatus('ended');
-          }
+      if (data.status === 'active') {
+        const now = Date.now();
+        const timeLeft = Math.ceil(new Date(data.endTime).getTime() - now) / 1000;
+        setCountdown(Math.max(0, Math.floor(timeLeft)));
+  
+        if (timeLeft <= 0) {
+          const res = await axios.post(`${API}/complete`, { roomId });
+          setWinner(res.data.winner);
+          setScores(res.data.scores);
+          setBets(res.data.bets);
+          setStatus('ended');
         }
       }
     } catch (err) {
       console.error('Polling error:', err);
     }
   };
+  
 
 // Poll status every second when in a room with a roomId
 useEffect(() => {
@@ -175,28 +165,27 @@ const sendReady = async () => {
               </ul>
             </div>
           )}
-
-          {!['active', 'ended'].includes(status) && (
-            <div>
-              <label>
-                Bet Penguins:
-                <input
-                  type="number"
-                  value={bet}
-                  onChange={(e) => setBet(Number(e.target.value))}
-                  min="1"
-                  style={{ margin: '0 10px', width: '60px' }}
-                />
-              </label>
-              <button
-                onClick={sendReady}
-                disabled={isReady}
-                style={{ padding: '10px 20px', marginTop: '10px' }}
-              >
-                {isReady ? '✅ Waiting for opponent...' : '✅ Ready & Bet'}
-              </button>
-            </div>
-          )}
+{!['active', 'ended'].includes(status) && (
+  <div>
+    <label>
+      Bet Penguins:
+      <input
+        type="number"
+        value={bet}
+        onChange={(e) => setBet(Number(e.target.value))}
+        min="1"
+        style={{ margin: '0 10px', width: '60px' }}
+      />
+    </label>
+    <button
+      onClick={sendReady}
+      disabled={isReady}
+      style={{ padding: '10px 20px', marginTop: '10px' }}
+    >
+      {isReady ? '✅ Waiting for opponent...' : '✅ Ready & Bet'}
+    </button>
+  </div>
+)}
 
           {status === 'active' && (
             <>
