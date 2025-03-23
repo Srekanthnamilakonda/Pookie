@@ -28,13 +28,13 @@ function BattleRoom() {
       setScores(data.scores || {});
       setBets(data.bets || {});
 
+      const opponent = data.players.find(p => p !== username);
+      setOpponentClicks(data.scores?.[opponent] || 0);
+
       if (data.status === 'active') {
         const now = Date.now();
         const timeLeft = Math.ceil(new Date(data.endTime).getTime() - now) / 1000;
         setCountdown(Math.max(0, Math.floor(timeLeft)));
-
-        const opponent = data.players.find(p => p !== username);
-        setOpponentClicks(data.scores?.[opponent] || 0);
 
         if (timeLeft <= 0) {
           const res = await axios.post(`${API}/complete`, { roomId });
@@ -50,11 +50,11 @@ function BattleRoom() {
   };
 
   useEffect(() => {
-    if (inRoom && ['waiting', 'ready', 'active'].includes(status)) {
+    if (inRoom) {
       const interval = setInterval(pollStatus, 1000);
       return () => clearInterval(interval);
     }
-  }, [inRoom, status]);
+  }, [inRoom]);
 
   useEffect(() => {
     if (status === 'active' && preCountdown === null) {
@@ -80,7 +80,7 @@ function BattleRoom() {
     const res = await axios.post(`${API}/create`, { username });
     setRoomId(res.data.roomId);
     setInRoom(true);
-    setStatus('waiting'); // ← Set initial status manually
+    setStatus('waiting');
   };
 
   const joinRoom = async () => {
@@ -88,7 +88,7 @@ function BattleRoom() {
       const res = await axios.post(`${API}/join`, { roomId, username });
       if (res.data.success) {
         setInRoom(true);
-        setStatus('waiting'); // ← Start polling
+        setStatus('waiting');
       } else {
         alert(res.data.message || 'Failed to join');
       }
@@ -97,7 +97,6 @@ function BattleRoom() {
       alert(err.response?.data?.error || 'Failed to join room');
     }
   };
-  
 
   const sendReady = async () => {
     await axios.post(`${API}/ready`, { roomId, username, bet });
@@ -133,6 +132,7 @@ function BattleRoom() {
         <div>
           <h3>Room ID: {roomId}</h3>
           <h4>Status: {status}</h4>
+          <p style={{ color: 'gray' }}>DEBUG: status = {status}</p>
 
           {players.length > 0 && (
             <div>
@@ -145,7 +145,7 @@ function BattleRoom() {
             </div>
           )}
 
-          {status === 'waiting' || status === 'ready' ? (
+          {!['active', 'ended'].includes(status) && (
             <div>
               <label>
                 Bet Penguins:
@@ -165,7 +165,9 @@ function BattleRoom() {
                 {isReady ? '✅ Waiting for opponent...' : '✅ Ready & Bet'}
               </button>
             </div>
-          ) : status === 'active' ? (
+          )}
+
+          {status === 'active' && (
             <>
               {preCountdown > 0 ? (
                 <h1 style={{ fontSize: '48px', color: '#f39c12' }}>
@@ -185,7 +187,9 @@ function BattleRoom() {
                 </>
               )}
             </>
-          ) : status === 'ended' ? (
+          )}
+
+          {status === 'ended' && (
             <>
               <h2
                 style={{
@@ -201,7 +205,7 @@ function BattleRoom() {
               <p>{username}: {scores[username] || 0} clicks ({bets[username] || 0} 🐧)</p>
               <p>{opponent}: {scores[opponent] || 0} clicks ({bets[opponent] || 0} 🐧)</p>
             </>
-          ) : null}
+          )}
         </div>
       )}
 
